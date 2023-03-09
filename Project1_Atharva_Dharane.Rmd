@@ -1,0 +1,251 @@
+---
+title: "Project1"
+author: Atharva Dharane
+output: word_document
+---
+
+```{r setup, include=FALSE}
+library(knitr)
+library(glmnet)
+knitr::opts_chunk$set(echo = TRUE)
+
+# FIXME: change the input file to TCGA_breast_cancer_ERpositive_vs_ERnegative_PAM50.tsv
+
+file <- "TCGA_breast_cancer_ERpositive_vs_ERnegative_PAM50.tsv"
+all50genes <- c('NAT1','BIRC5','BAG1','BCL2','BLVRA','CCNB1','CCNE1','CDC6','CDC20','CDH3',"CENPF","EGFR","ERBB2","ESR1","FGFR4","FOXC1","GRB7","FOXA1","KRT5","KRT14","KRT17","MAPT","MDM2","MKI67","MMP11","MYBL2","MYC","PGR","RRM2","SFRP1","TYMS","MIA","EXO1","PTTG1","MELK","NDC80","KIF2C","UBE2C","SLC39A6","PHGDH","GPR160","UBE2T","CXXC5","ANLN","CEP55","ACTR3B","MLPH","NUF2","TMEM45B")
+#all50genes<- c('NAT1','BIRC5','BAG1','BCL2','BLVRA','CCNB1','CCNE1','CDC6','CDC20','CDH3')
+```
+
+## Assignment
+
+This assignment builds upon the R/RStudio class and expands the n-fold cross-validation example. 
+
+1.	for the assignment use the second dataset called TCGA_breast_cancer_ERpositive_vs_ERnegative_PAM50.tsv that shows ER assignment for each sample (Positive vs. Negative). 
+
+2.	compute 5-fold and 10-fold cross-validation estimates of prediction accuracies of ER using all genes by utilizing logistic regression and compare with NNC (2x2 table). 
+
+3.	modify the the R markdown document template to report your computation and results in a table format. 
+
+4.	comment on the quality of results 
+
+5.	In the second part of the assignment use Project1fs.R to process a large data set by first removing all genes with sd < 1 and subsequently use Feature selection to pick top 50 genes vs top 100 genes for cross-validation based on the t-test statistic. 
+
+6.	For extra credit – please replace centroid based classifier with one utilizing logistic or lasso regression similarly to the first part of the assignment and report on any difficulties. 
+
+For the assignment use Project1.Rmd file which has a number “FIXME:” labels indicating where your intervention is required. 
+
+There is a companion Project1.R where you can test and debug your code before adding it to Project1.Rmd.
+For extra points use lasso regression on the large dataset instead of logistic regression.x
+
+The assignment is due on – February 25, 2021 midnight.
+
+The submission should be zip compressed file named “project1-[your UC username].zip” (e.g. “project1-lastnfi.zip”) which includes project1.Rmd, project1.docx and any supporting R files. The zip file should be uploaded Canvas The assignment entry in Canvas will be created shortly.
+
+
+## Reading data
+
+Please add R code that reads data here - 
+reading file: `r file`
+
+```{r reading_data, echo=FALSE}
+system.time({
+# important -- this makes sure our runs are consistent and reproducible
+set.seed(0)
+
+header <- scan(file, nlines = 1, sep="\t", what = character())
+data <- read.table(file, skip = 2, header = FALSE, sep = "\t", quote = "", check.names=FALSE)
+names(data) <- header
+
+header2 <- scan(file, skip = 1, nlines = 1, sep="\t", what = character())
+cat("Data successfully Read.")
+})
+```
+
+## Computation
+
+Please add R code that computes the results
+
+```{r computation, echo=FALSE}
+cross_validation <- function (nfold, alg) {
+
+  # split each sample type samples into nfold groups
+  ERPositive_groups <- split(sample(colnames(ERPos)), 1+(seq_along(colnames(ERPos)) %% nfold))
+  ERNegative_groups <- split(sample(colnames(ERNeg)), 1+(seq_along(colnames(ERNeg)) %% nfold))
+
+  result <- array()
+  
+  
+  # iterate from 1 to nfold groups -- to choose test group
+  for (test_group in 1:nfold) {
+
+    # return all samples in the chosen test group
+    testERPos <- ERPos[,colnames(ERPos) %in% unlist(ERPositive_groups[test_group])]
+    testERNeg <- ERNeg[,colnames(ERNeg) %in% unlist(ERNegative_groups[test_group])]
+    
+    testP <- data.frame(t(testERPos))
+    testN <- data.frame(t(testERNeg))
+
+    # return all samples *not* in the chosen test group 
+    trainingERPos <- ERPos[,!(colnames(ERPos) %in% unlist(ERPositive_groups[test_group]))]
+    trainingERNeg <- ERNeg[,!(colnames(ERNeg) %in% unlist(ERNegative_groups[test_group]))]
+
+    if (alg == "centroid") {
+       # compute centroid for each cancer type -- mean for each gene based on all samples
+       # note -- rows are gene
+       centroidERPos <- rowMeans(trainingERPos)
+       centroidERNeg <- rowMeans(trainingERNeg)
+
+       # For each sample in the test set decide whether it will be classified
+       # distance from centroid Lum A: sum(abs(x-centroidLumA))
+       # distance from centroid Basal: sum(abs(x-centroidBasal))
+       # distance is a sum of distances over all genes 
+       # misclassification if when the distance is greater from centroid associated with known result
+       
+       misclassifiedERPosKNNc <<- sum(sapply(testERPos, function(x) { sum(abs(x-centroidERPos))>sum(abs(x-centroidERNeg)) }))
+       misclassifiedERNegKNNc <<- sum(sapply(testERNeg, function(x) { sum(abs(x-centroidERPos))<sum(abs(x-centroidERNeg)) }))
+       
+       result[test_group] <- (misclassifiedERPosKNNc+misclassifiedERNegKNNc)/(ncol(testERPos)+ncol(testERNeg))
+    }
+
+    if (alg == "GLM") {
+      # FIXME: ADD GLM
+      
+      trainP <- cbind(data.frame(t(trainingERPos)),ERStatus=1)
+      trainN <- cbind(data.frame(t(trainingERNeg)),ERStatus=0)
+      trainingData <- rbind(trainP,trainN)
+      regmodel <- glm(ERStatus~.,data = trainingData, family = "binomial",control = list(maxit=50))
+      
+      testP <- cbind(data.frame(t(testERPos)),ERStatus=1)
+      testN <- cbind(data.frame(t(testERNeg)),ERStatus=0)
+      
+      testData <-rbind(testP,testN)
+
+      p1<- predict(regmodel,newdata=testP,type="response")
+      predp1 <-ifelse(p1>=0.5,1,0)    
+      p2<- predict(regmodel,newdata=testN,type="response")
+      predp2<-ifelse(p2<0.5,0,1)
+      misclassifiedERPosGLM <<- sum(ifelse(testP$ERStatus!=predp1,1,0))
+      misclassifiedERNegGLM <<- sum(ifelse(testN$ERStatus!=predp2,1,0))
+      
+      result[test_group] <- (misclassifiedERPosGLM+misclassifiedERNegGLM)/(ncol(testP)+ncol(testN))
+
+    }
+    
+    if (alg == "Lasso") {
+   
+      trainP <- cbind(data.frame(t(trainingERPos)),ERStatus=1)
+      trainN <- cbind(data.frame(t(trainingERNeg)),ERStatus=0)
+      trainingData <- rbind(trainP,trainN)
+      trainingData<-data.frame(trainingData)
+      training_label<- trainingData[,50]
+      trainingData<-model.matrix(ERStatus~.,trainingData)[,-1]
+      lambda_seq <- 10^seq(2, -2, by = -.1)
+       
+      Lasso_model1 <- glmnet(trainingData,training_label, alpha=1,lambda=0.001,family = "binomial")
+      
+      testP <- cbind(data.frame(t(testERPos)),ERStatus=1)
+      testP_labels<-testP[,50]
+      testP<-model.matrix(ERStatus~.,testP)[,-1]
+      testN <- cbind(data.frame(t(testERNeg)),ERStatus=0)
+      testN_labels<-testN[,50]
+      testN<-model.matrix(ERStatus~.,testN)[,-1]
+       
+      #testData <- rbind(testP,testN)
+       
+      p1<- predict(Lasso_model1,s=Lasso_model1$lamda.min,newx=testP)
+      predl1<-ifelse(p1>=0.5,1,0)
+      
+      p2<- predict(Lasso_model1,s=Lasso_model1$lamda.min,newx=testN)
+      predl2<-ifelse(p2<0.5,0,1)
+       
+      misclassifiedERPosLasso <<- sum(ifelse(testP_labels!=predl1,1,0))
+      misclassifiedERNegLasso <<- sum(ifelse(testN_labels!=predl2,1,0))
+       
+      result[test_group] <- (misclassifiedERPosLasso+misclassifiedERNegLasso)/(ncol(testP)+ncol(testN))
+ }
+    
+  }
+  cat("\nMissclasification Rates for n-fold ",nfold," for ",alg," are: \n")
+  print(result)
+  cat("Mean of Misclassification rate :",mean(result),"\nS.D of Misclassification Rate: ",sd(result))
+  paste("mean=",round(mean(result),5)," sd=",round(sd(result),5))
+
+  
+}
+
+
+system.time({
+
+  # FIXME: the data file has ER "Positive" / "Negative" instead of cancer type
+  # FIXME: gene id field is labeled data$id instead of data$sample_id
+  
+ERPos <- data[data$id%in%all50genes,header2=='Positive']
+ERNeg <- data[data$id%in%all50genes,header2=='Negative']
+
+kNNC_5_all <- cross_validation(nfold=5, alg="centroid")
+GLM_5_all <- cross_validation(nfold=5, alg="GLM")
+lasso_5_all<-cross_validation(nfold=5, alg="Lasso")
+
+kNNC_10_all <- cross_validation(nfold=10, alg="centroid")
+GLM_10_all <- cross_validation(nfold=10, alg="GLM")
+lasso_10_all<-cross_validation(nfold=10, alg="Lasso")
+
+cat("\nComputation of KNNc and Logistic Regression using 5-fold and 10-fold cross-validation successfully completed.")
+# FIXME: add code to compute 10 fold cross validation for GLM and kNNC
+
+})
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code.
+
+## Results
+
+These are our results:
+
+### 5-fold And 10-fold cross validation
+```{r results5, echo=FALSE}
+x<-data.frame("GLM"=c(GLM_5_all,GLM_10_all),"kNNC"=c(kNNC_5_all,kNNC_10_all),"Lasso"=c(lasso_5_all,lasso_10_all))
+rownames(x) <- c("5-fold","10-fold")
+print(x)
+
+```
+
+
+## Discussion
+
+Based on the results, following can be inferred: 
+
+A) Logistic Regression Model -
+  
+  - When we use glm model the mean of the misclassification rate decreases considerably (from 0.128 to 0.07) from 5-fold            cross-validation to 10-fold cross-validation.
+  - Thus, we can say that the accuracy (1-misclassification_rate) increases when we increase the number of folds.
+  - The reason behind this can be, as in 10-folds the amount of training data increases (9 parts) as compared to 5-folds (4         parts), thus being able to fit data more accurately.
+  - Also, we can see that , the standard deviation also decreases when we move from 5-fold to 10-fold, thus showing the increase     variance of the prediction and the model is converging nicely. 
+  
+B) Centroid Method - 
+
+  - As visible from from the centroid method result, the mean and the standard deviation more or less remain the same during        both the k-fold runs. 
+  - This mey be due to the fact that, the centroid method is not a structured algorithm, thus the type or amount of data it 
+    receives during its training does not have much impact on its prediction accuracy. 
+  - But, for this data the centroid algorithm shows much a promising accuracy (~93%) thus, indicating that the data is              discretely divided in to groups and each group is considerably distant from another.
+  
+C) Lasso Method - 
+  
+  - Lasso regresssion works pretty much same as the  glm model but only better.
+  - For 10-fold cross validation lasso regression model gives better accuracy than the glm model with less sd.
+  - One of the reasons for this may be, as this data contains lots of attributes, after penalising (adding absolute term) most      of these become zero, thus only keeping the relevant ones.
+  
+D) General Comparison -
+
+  - This overall, it can be inferred as : Centroid method works best on the given data capturing all the patterns and predicting     with an accuracy of almost 93%.
+  - The GLM model also shows promising results during 10-fold cross validation.
+  - Thus, based on the results, it can be said that KNNc can be used without any doubt to predict the ERStatus.
+    
+
+# Part 2
+
+Change eval=TRUE when ready to include Project1fs.R
+
+```{r part2, eval = TRUE, code=readLines("Project1fs.R"), echo=FALSE}
+```
